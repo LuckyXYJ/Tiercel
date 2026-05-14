@@ -201,7 +201,11 @@ extension Cache {
                     let tasks = try decoder.decode([DownloadTask].self, from: data)
                     tasks.forEach { (task) in
                         task.cache = self
-                        if task.status == .waiting  {
+                        if task.status == .waiting ||
+                            task.status == .running ||
+                            task.status == .willSuspend ||
+                            task.status == .willCancel ||
+                            task.status == .willRemove {
                             task.protectedState.write { $0.status = .suspended }
                         }
                     }

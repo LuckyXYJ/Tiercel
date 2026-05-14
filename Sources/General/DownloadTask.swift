@@ -250,7 +250,13 @@ extension DownloadTask {
         switch status {
         case .running:
             status = .willSuspend
-            sessionTask?.cancel(byProducingResumeData: { _ in })
+            if let sessionTask = sessionTask {
+                sessionTask.cancel(byProducingResumeData: { _ in })
+            } else {
+                operationQueue.async {
+                    self.didComplete(.local)
+                }
+            }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willSuspend
             operationQueue.async {
@@ -267,7 +273,13 @@ extension DownloadTask {
         switch status {
         case .running:
             status = .willCancel
-            sessionTask?.cancel()
+            if let sessionTask = sessionTask {
+                sessionTask.cancel()
+            } else {
+                operationQueue.async {
+                    self.didComplete(.local)
+                }
+            }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willCancel
             operationQueue.async {
@@ -286,7 +298,13 @@ extension DownloadTask {
         switch status {
         case .running:
             status = .willRemove
-            sessionTask?.cancel()
+            if let sessionTask = sessionTask {
+                sessionTask.cancel()
+            } else {
+                operationQueue.async {
+                    self.didComplete(.local)
+                }
+            }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willRemove
             operationQueue.async {
