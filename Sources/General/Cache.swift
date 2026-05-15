@@ -260,19 +260,29 @@ extension Cache {
 extension Cache {
     internal func storeTasks(_ tasks: [DownloadTask]) {
         debouncer.execute(on: ioQueue) {
-            var path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)_Tasks.plist")
-            do {
-                let data = try self.encoder.encode(tasks)
-                let url = URL(fileURLWithPath: path)
-                try data.write(to: url)
-            } catch {
-                self.manager?.log(.error("store tasks failed",
-                                         error: TiercelError.cacheError(reason: .cannotEncodeTasks(path: path,
-                                                                                                   error: error))))
-            }
-            path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)Tasks.plist")
-            try? self.fileManager.removeItem(atPath: path)
+            self.writeTasks(tasks)
         }
+    }
+
+    internal func storeTasksImmediately(_ tasks: [DownloadTask]) {
+        ioQueue.sync {
+            writeTasks(tasks)
+        }
+    }
+
+    private func writeTasks(_ tasks: [DownloadTask]) {
+        var path = (downloadPath as NSString).appendingPathComponent("\(identifier)_Tasks.plist")
+        do {
+            let data = try encoder.encode(tasks)
+            let url = URL(fileURLWithPath: path)
+            try data.write(to: url)
+        } catch {
+            manager?.log(.error("store tasks failed",
+                                error: TiercelError.cacheError(reason: .cannotEncodeTasks(path: path,
+                                                                                          error: error))))
+        }
+        path = (downloadPath as NSString).appendingPathComponent("\(identifier)Tasks.plist")
+        try? fileManager.removeItem(atPath: path)
     }
     
     internal func storeFile(at srcURL: URL, to dstURL: URL) {

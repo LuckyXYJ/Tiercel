@@ -782,6 +782,10 @@ extension SessionManager {
     internal func storeTasks() {
         cache.storeTasks(tasks)
     }
+
+    internal func storeTasksImmediately() {
+        cache.storeTasksImmediately(tasks)
+    }
     
     internal func determineStatus(fromRunningTask: Bool) {
         if isControlNetworkActivityIndicator {
@@ -819,7 +823,7 @@ extension SessionManager {
         
         if isCompleted {
             if status == .succeeded || status == .failed {
-                storeTasks()
+                storeTasksImmediately()
                 return
             }
             timeRemaining = 0
@@ -837,7 +841,7 @@ extension SessionManager {
 
         if isSuspended {
             if status == .suspended {
-                storeTasks()
+                storeTasksImmediately()
                 return
             }
             status = .suspended
@@ -867,7 +871,7 @@ extension SessionManager {
     
     private func ending(_ isSucceeded: Bool) {
         executeCompletion(isSucceeded)
-        storeTasks()
+        storeTasksImmediately()
         invalidateTimer()
     }
     
@@ -1018,4 +1022,3 @@ extension SessionManager {
     }
     
 }
-
