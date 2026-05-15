@@ -42,6 +42,7 @@ public class DownloadTask: Task<DownloadTask> {
     private var _sessionTask: URLSessionDownloadTask? {
         willSet {
             _sessionTask?.removeObserver(self, forKeyPath: "currentRequest")
+            _sessionTask?.tiercelTask = nil
         }
         didSet {
             _sessionTask?.addObserver(
@@ -220,7 +221,7 @@ extension DownloadTask {
             }
             executeControl()
             operationQueue.async {
-                self.didComplete(.local)
+                self.didComplete(.local(fromRunningTask: false))
             }
         } else {
             if let resumeData = resumeData,
@@ -245,48 +246,74 @@ extension DownloadTask {
 
 
     internal func suspend(onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
-        guard status == .running || status == .waiting else { return }
-        controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
+        let executer = Executer(onMainQueue: onMainQueue, handler: handler)
+        guard status == .running || status == .waiting else {
+            executer.execute(self)
+            return
+        }
+        controlExecuter = executer
         switch status {
         case .running:
             status = .willSuspend
             if let sessionTask = sessionTask {
-                sessionTask.cancel(byProducingResumeData: { _ in })
+                sessionTask.cancel(byProducingResumeData: { [weak self] resumeData in
+                    guard let self = self else { return }
+                    self.operationQueue.async {
+                        if let resumeData = resumeData {
+                            self.resumeData = resumeData
+                            self.cache.storeTmpFile(self.tmpFileName)
+                        }
+                        self.sessionTask = nil
+                        self.didComplete(.local(fromRunningTask: true))
+                    }
+                })
             } else {
                 operationQueue.async {
-                    self.didComplete(.local)
+                    self.didComplete(.local(fromRunningTask: true))
                 }
             }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willSuspend
             operationQueue.async {
-                self.didComplete(.local)
+                self.didComplete(.local(fromRunningTask: false))
             }
         case .willSuspend, .willCancel, .willRemove:
-            break
+            executeControl()
         }
     }
 
     internal func cancel(onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
-        guard status != .succeeded else { return }
-        controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
+        let executer = Executer(onMainQueue: onMainQueue, handler: handler)
+        guard status != .succeeded else {
+            executer.execute(self)
+            return
+        }
+        controlExecuter = executer
         switch status {
         case .running:
             status = .willCancel
             if let sessionTask = sessionTask {
                 sessionTask.cancel()
-            } else {
-                operationQueue.async {
-                    self.didComplete(.local)
-                }
+                self.sessionTask = nil
+            }
+            operationQueue.async {
+                self.didComplete(.local(fromRunningTask: true))
             }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willCancel
             operationQueue.async {
-                self.didComplete(.local)
+                self.didComplete(.local(fromRunningTask: false))
             }
-        case .willSuspend, .willCancel, .willRemove:
-            break
+        case .willSuspend, .willCancel:
+            status = .willCancel
+            let fromRunningTask = sessionTask != nil
+            sessionTask?.cancel()
+            sessionTask = nil
+            operationQueue.async {
+                self.didComplete(.local(fromRunningTask: fromRunningTask))
+            }
+        case .willRemove:
+            executeControl()
         }
     }
 
@@ -300,18 +327,24 @@ extension DownloadTask {
             status = .willRemove
             if let sessionTask = sessionTask {
                 sessionTask.cancel()
-            } else {
-                operationQueue.async {
-                    self.didComplete(.local)
-                }
+                self.sessionTask = nil
+            }
+            operationQueue.async {
+                self.didComplete(.local(fromRunningTask: true))
             }
         case .waiting, .suspended, .failed, .succeeded, .canceled, .removed:
             status = .willRemove
             operationQueue.async {
-                self.didComplete(.local)
+                self.didComplete(.local(fromRunningTask: false))
             }
         case .willSuspend, .willCancel, .willRemove:
-            break
+            status = .willRemove
+            let fromRunningTask = sessionTask != nil
+            sessionTask?.cancel()
+            sessionTask = nil
+            operationQueue.async {
+                self.didComplete(.local(fromRunningTask: fromRunningTask))
+            }
         }
     }
 
@@ -551,11 +584,12 @@ extension DownloadTask {
     
     internal func didComplete(_ type: CompletionType) {
         switch type {
-        case .local:
+        case let .local(fromRunningTask):
+            manager?.maintainTasks(with: .removeRunningTasks(self))
             
             switch status {
             case .willSuspend,.willCancel, .willRemove:
-                determineStatus(with: .manual(false))
+                determineStatus(with: .manual(fromRunningTask))
             case .running:
                 succeeded(fromRunning: false, immediately: true)
             default:

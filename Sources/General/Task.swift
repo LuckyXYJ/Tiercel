@@ -53,7 +53,7 @@ public class Task<TaskType>: NSObject, Codable {
     }
     
     enum CompletionType {
-        case local
+        case local(fromRunningTask: Bool)
         case network(task: URLSessionTask, error: Error?)
     }
     
@@ -351,5 +351,4 @@ extension Task {
     }
     
 }
-
 

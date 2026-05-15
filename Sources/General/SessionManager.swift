@@ -589,28 +589,57 @@ extension SessionManager {
     
     public func totalSuspend(onMainQueue: Bool = true, handler: Handler<SessionManager>? = nil) {
         operationQueue.async {
-            guard self.status == .running || self.status == .waiting else { return }
+            guard self.status == .running || self.status == .waiting else {
+                Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
+                return
+            }
             self.status = .willSuspend
             self.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
+            guard !self.tasks.isEmpty else {
+                self.status = .suspended
+                self.executeControl()
+                self.ending(false)
+                return
+            }
             self.tasks.forEach { $0.suspend() }
+            self.determineStatus(fromRunningTask: false)
         }
     }
     
     public func totalCancel(onMainQueue: Bool = true, handler: Handler<SessionManager>? = nil) {
         operationQueue.async {
-            guard self.status != .succeeded && self.status != .canceled else { return }
+            guard self.status != .succeeded && self.status != .canceled else {
+                Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
+                return
+            }
             self.status = .willCancel
             self.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
+            guard !self.tasks.isEmpty else {
+                self.status = .canceled
+                self.executeControl()
+                self.ending(false)
+                return
+            }
             self.tasks.forEach { $0.cancel() }
         }
     }
     
     public func totalRemove(completely: Bool = false, onMainQueue: Bool = true, handler: Handler<SessionManager>? = nil) {
         operationQueue.async {
-            guard self.status != .removed else { return }
+            guard self.status != .removed else {
+                Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
+                return
+            }
             self.status = .willRemove
             self.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
+            guard !self.tasks.isEmpty else {
+                self.status = .removed
+                self.executeControl()
+                self.ending(false)
+                return
+            }
             self.tasks.forEach { $0.remove(completely: completely) }
+            self.determineStatus(fromRunningTask: false)
         }
     }
     
