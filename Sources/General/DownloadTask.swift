@@ -259,6 +259,7 @@ extension DownloadTask {
                 sessionTask.cancel(byProducingResumeData: { [weak self] resumeData in
                     guard let self = self else { return }
                     self.operationQueue.async {
+                        guard self.status == .willSuspend else { return }
                         if let resumeData = resumeData {
                             self.resumeData = resumeData
                             self.cache.storeTmpFile(self.tmpFileName)
